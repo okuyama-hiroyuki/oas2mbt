@@ -9,7 +9,7 @@
 //   "moonbitlang/x@0.4.6",
 // }
 
-name = "username/mbt-gen"
+name = "okuyama-hiroyuki/oas2mbt"
 
 version = "0.1.0"
 

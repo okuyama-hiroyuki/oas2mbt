@@ -1,1 +1,1 @@
-# username/mbt-gen
+# okuyama-hiroyuki/oas2mbt
