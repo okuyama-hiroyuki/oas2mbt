@@ -1,3 +1,592 @@
-// Main package file for your library code.
-// Put public APIs and shared helpers here.
-// Keep blocks small and focused for easy refactors.
+///|
+/// Minimal indentation-based YAML subset sufficient to read OpenAPI 3.1
+/// documents written in plain block style (no flow collections, no tabs,
+/// no anchors/aliases). Not a general-purpose YAML parser.
+pub(all) enum Yaml {
+  YMap(Array[(String, Yaml)])
+  YList(Array[Yaml])
+  YStr(String)
+}
+
+///|
+priv struct Line {
+  indent : Int
+  text : String
+}
+
+///|
+fn indent_of(s : String) -> Int {
+  let mut n = 0
+  while n < s.length() && s[n] == ' ' {
+    n += 1
+  }
+  n
+}
+
+///|
+fn tokenize(src : String) -> Array[Line] {
+  let lines = []
+  for raw in src.split("\n") {
+    let trimmed = raw.trim_end(chars=" \r").to_owned()
+    let n = indent_of(trimmed)
+    let content = trimmed.trim_start(chars=" ").to_owned()
+    if content.length() == 0 {
+      continue
+    }
+    lines.push({ indent: n, text: content })
+  }
+  lines
+}
+
+///|
+fn unquote(s : String) -> String {
+  let s = s.trim(chars=" ").to_owned()
+  if s.length() >= 2 && s[0] == '\'' && s[s.length() - 1] == '\'' {
+    s.substring(start=1, end=s.length() - 1).replace_all(old="''", new="'")
+  } else {
+    s
+  }
+}
+
+///|
+/// Splits a `key: value` line into (key, value). `value` is "" when the
+/// line is just `key:`.
+fn split_kv(text : String) -> (String, String) {
+  // Find the first ": " or a trailing ":" that is not inside quotes.
+  let mut in_quote = false
+  let mut i = 0
+  let n = text.length()
+  let mut found = -1
+  while i < n {
+    let c = text[i]
+    if c == '\'' {
+      in_quote = not(in_quote)
+    } else if not(in_quote) && c == ':' && (i + 1 == n || text[i + 1] == ' ') {
+      found = i
+      break
+    }
+    i += 1
+  }
+  if found < 0 {
+    (text, "")
+  } else {
+    let key = text.substring(start=0, end=found).trim(chars=" ").to_owned()
+    let value = if found + 1 >= n {
+      ""
+    } else {
+      text.substring(start=found + 1, end=n).trim(chars=" ").to_owned()
+    }
+    (key, value)
+  }
+}
+
+///|
+/// Parses a run of lines that all sit at exactly `indent`, returning the
+/// parsed value and the index of the first line not consumed.
+fn parse_block(lines : Array[Line], start : Int, indent : Int) -> (Yaml, Int) {
+  if start >= lines.length() || lines[start].indent != indent {
+    return (YMap([]), start)
+  }
+  if lines[start].text.has_prefix("- ") || lines[start].text == "-" {
+    parse_list(lines, start, indent)
+  } else {
+    parse_map(lines, start, indent)
+  }
+}
+
+///|
+fn parse_list(lines : Array[Line], start : Int, indent : Int) -> (Yaml, Int) {
+  let items = []
+  let mut i = start
+  while i < lines.length() &&
+        lines[i].indent == indent &&
+        (lines[i].text.has_prefix("- ") || lines[i].text == "-") {
+    let rest = if lines[i].text == "-" {
+      ""
+    } else {
+      lines[i].text.substring(start=2, end=lines[i].text.length())
+    }
+    let item_indent = indent + 2
+    if rest == "" {
+      // Nested block belonging to this item, indented under the dash.
+      let (value, next_i) = parse_block(lines, i + 1, item_indent)
+      items.push(value)
+      i = next_i
+    } else {
+      let mut j = i + 1
+      while j < lines.length() && lines[j].indent >= item_indent {
+        j += 1
+      }
+      let (_, colon_value) = split_kv(rest)
+      if colon_value == "" && split_kv(rest).0 == rest && j == i + 1 {
+        // Plain scalar item, e.g. `- x`.
+        items.push(YStr(unquote(rest)))
+      } else {
+        // Synthesize a line for the item's own content, then keep consuming
+        // any following lines that belong to the same item (indented under
+        // the dash) as further map entries.
+        let synth = { indent: item_indent, text: rest }
+        let rebuilt = [synth]
+        for k = i + 1; k < j; k = k + 1 {
+          rebuilt.push(lines[k])
+        }
+        let (value, _) = parse_block(rebuilt, 0, item_indent)
+        items.push(value)
+      }
+      i = j
+    }
+  }
+  (YList(items), i)
+}
+
+///|
+fn parse_map(lines : Array[Line], start : Int, indent : Int) -> (Yaml, Int) {
+  let entries = []
+  let mut i = start
+  while i < lines.length() &&
+        lines[i].indent == indent &&
+        not(lines[i].text.has_prefix("- ")) &&
+        lines[i].text != "-" {
+    let (raw_key, raw_value) = split_kv(lines[i].text)
+    let key = unquote(raw_key)
+    if raw_value == "[]" {
+      entries.push((key, YList([])))
+      i += 1
+    } else if raw_value == "{}" {
+      entries.push((key, YMap([])))
+      i += 1
+    } else if raw_value == "" {
+      let has_nested = i + 1 < lines.length() && lines[i + 1].indent > indent
+      if has_nested {
+        let (value, next_i) = parse_block(lines, i + 1, lines[i + 1].indent)
+        entries.push((key, value))
+        i = next_i
+      } else {
+        entries.push((key, YStr("")))
+        i += 1
+      }
+    } else if raw_value.has_prefix("|") || raw_value.has_prefix(">") {
+      // Block scalar: gather following more-indented lines as raw text.
+      let body_indent = if i + 1 < lines.length() {
+        lines[i + 1].indent
+      } else {
+        indent + 2
+      }
+      let parts = []
+      let mut j = i + 1
+      while j < lines.length() && lines[j].indent >= body_indent {
+        let pad = String::make(lines[j].indent - body_indent, ' ')
+        parts.push(pad + lines[j].text)
+        j += 1
+      }
+      entries.push((key, YStr(parts.join("\n"))))
+      i = j
+    } else {
+      entries.push((key, YStr(unquote(raw_value))))
+      i += 1
+    }
+  }
+  (YMap(entries), i)
+}
+
+///|
+pub fn parse_yaml(src : String) -> Yaml {
+  let lines = tokenize(src)
+  if lines.length() == 0 {
+    YMap([])
+  } else {
+    let (v, _) = parse_block(lines, 0, lines[0].indent)
+    v
+  }
+}
+
+///|
+fn ymap_get(y : Yaml, key : String) -> Yaml? {
+  match y {
+    YMap(entries) => {
+      for kv in entries {
+        if kv.0 == key {
+          return Some(kv.1)
+        }
+      }
+      None
+    }
+    _ => None
+  }
+}
+
+///|
+/// Like `ymap_get`, but defaults to an empty map instead of `None`.
+fn get(y : Yaml, key : String) -> Yaml {
+  match ymap_get(y, key) {
+    Some(v) => v
+    None => YMap([])
+  }
+}
+
+///|
+fn ystr(y : Yaml) -> String {
+  match y {
+    YStr(s) => s
+    _ => ""
+  }
+}
+
+///|
+fn ylist(y : Yaml) -> Array[Yaml] {
+  match y {
+    YList(l) => l
+    _ => []
+  }
+}
+
+///|
+pub fn dump_yaml(y : Yaml) -> String {
+  match y {
+    YStr(s) => "YStr(\{s})"
+    YList(items) => "[" + items.map(dump_yaml).join(", ") + "]"
+    YMap(entries) =>
+      "{" +
+      entries.map(fn(kv) { kv.0 + ": " + dump_yaml(kv.1) }).join(", ") +
+      "}"
+  }
+}
+
+// ---------------------------------------------------------------------
+// OpenAPI -> MoonBit server-side scaffolding generator.
+//
+// Reads `components.schemas` into MoonBit structs and `paths` into one
+// handler-function stub per `operationId`, plus a route table wiring
+// method + path + operationId together. Handler bodies are left as
+// `abort(...)` stubs; the caller fills in real logic and, if desired,
+// wires `routes()` into whatever HTTP framework they use.
+// ---------------------------------------------------------------------
+
+///|
+fn last_segment(s : String, sep : String) -> String {
+  let parts = s.split(sep).collect()
+  if parts.length() == 0 {
+    s
+  } else {
+    parts[parts.length() - 1].to_string()
+  }
+}
+
+///|
+fn schema_ref_name(y : Yaml) -> String? {
+  match ymap_get(y, "$ref") {
+    Some(YStr(r)) => Some(last_segment(r, "/"))
+    _ => None
+  }
+}
+
+///|
+/// Resolves the MoonBit type of a schema fragment and whether it should
+/// be treated as nullable (from an `anyOf [T, null]` pattern).
+fn moon_type(schema : Yaml) -> (String, Bool) {
+  match schema_ref_name(schema) {
+    Some(name) => return (reserved_type_name(name), false)
+    None => ()
+  }
+  match ymap_get(schema, "anyOf") {
+    Some(YList(alts)) => {
+      let mut nullable = false
+      let mut other = "String"
+      for alt in alts {
+        if ystr(get(alt, "type")) == "null" {
+          nullable = true
+        } else {
+          let (t, _) = moon_type(alt)
+          other = t
+        }
+      }
+      return (other, nullable)
+    }
+    _ => ()
+  }
+  let t = ystr(get(schema, "type"))
+  if t == "array" {
+    let (it, _) = moon_type(get(schema, "items"))
+    ("Array[" + it + "]", false)
+  } else if t == "string" {
+    ("String", false)
+  } else if t == "boolean" {
+    ("Bool", false)
+  } else if t == "integer" {
+    ("Int", false)
+  } else {
+    ("String", false)
+  }
+}
+
+///|
+fn contains_str(arr : Array[String], v : String) -> Bool {
+  for x in arr {
+    if x == v {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// UpperCamel/lowerCamel -> snake_case.
+fn to_snake_case(s : String) -> String {
+  let out = StringBuilder::new()
+  let chars = s.to_array()
+  for i, c in chars {
+    if c.to_int() >= 65 && c.to_int() <= 90 {
+      if i != 0 {
+        out.write_char('_')
+      }
+      out.write_char(Char::from_int(c.to_int() + 32))
+    } else {
+      out.write_char(c)
+    }
+  }
+  out.to_string()
+}
+
+///|
+/// `Apps_setDomain` -> `apps_set_domain`.
+fn operation_fn_name(operation_id : String) -> String {
+  match operation_id.split_once("_") {
+    Some((prefix, rest)) =>
+      to_snake_case(prefix.to_owned()) + "_" + to_snake_case(rest.to_owned())
+    None => to_snake_case(operation_id)
+  }
+}
+
+///|
+fn wrap_optional(ty : String, optional : Bool) -> String {
+  if optional && not(ty.has_suffix("?")) {
+    ty + "?"
+  } else {
+    ty
+  }
+}
+
+///|
+fn gen_struct(name : String, schema : Yaml) -> String {
+  let required = ylist(get(schema, "required")).map(ystr)
+  let props = get(schema, "properties")
+  let out = StringBuilder::new()
+  out.write_string("///|\n")
+  match schema {
+    YMap(_) =>
+      match ymap_get(schema, "description") {
+        Some(YStr(d)) =>
+          for line in d.split("\n") {
+            out.write_string("/// " + line.to_string() + "\n")
+          }
+        _ => ()
+      }
+    _ => ()
+  }
+  out.write_string("pub struct " + name + " {\n")
+  match props {
+    YMap(entries) =>
+      for kv in entries {
+        let (base, nullable) = moon_type(kv.1)
+        let optional = nullable || not(contains_str(required, kv.0))
+        let ty = wrap_optional(base, optional)
+        out.write_string("  " + kv.0 + " : " + ty + "\n")
+      }
+    _ => ()
+  }
+  out.write_string("} derive(Show, Eq)\n")
+  out.to_string()
+}
+
+///|
+/// A handful of identifiers MoonBit reserves for the language itself
+/// (e.g. the `Error` suberror type); schemas using these names are
+/// suffixed with `Dto` to stay a valid declaration.
+fn reserved_type_name(name : String) -> String {
+  if name == "Error" || name == "Result" || name == "Option" {
+    name + "Dto"
+  } else {
+    name
+  }
+}
+
+///|
+fn gen_schemas(root : Yaml) -> String {
+  let schemas = get(get(root, "components"), "schemas")
+  let out = StringBuilder::new()
+  match schemas {
+    YMap(entries) =>
+      for kv in entries {
+        out.write_string(gen_struct(reserved_type_name(kv.0), kv.1))
+        out.write_string("\n")
+      }
+    _ => ()
+  }
+  out.to_string()
+}
+
+///|
+priv struct Operation {
+  operation_id : String
+  http_method : String
+  path : String
+  description : String
+  params : Array[String]
+  body_type : String?
+  return_type : String
+}
+
+///|
+fn response_type(op : Yaml) -> String {
+  let responses = get(op, "responses")
+  let success_keys = ["200", "201"]
+  for key in success_keys {
+    match ymap_get(responses, key) {
+      Some(resp) => {
+        let content = get(get(resp, "content"), "application/json")
+        match ymap_get(content, "schema") {
+          Some(schema) => {
+            let t = ystr(get(schema, "type"))
+            if t == "array" {
+              let (it, _) = moon_type(get(schema, "items"))
+              return "Array[" + it + "]"
+            }
+            let (t2, _) = moon_type(schema)
+            return t2
+          }
+          None => ()
+        }
+      }
+      None => ()
+    }
+  }
+  "Unit"
+}
+
+///|
+fn collect_operations(root : Yaml) -> Array[Operation] {
+  let ops = []
+  match get(root, "paths") {
+    YMap(paths) =>
+      for pkv in paths {
+        let path = pkv.0
+        match pkv.1 {
+          YMap(methods) =>
+            for mkv in methods {
+              let http_method = mkv.0
+              let op = mkv.1
+              let op_id = ystr(get(op, "operationId"))
+              if op_id == "" {
+                continue
+              }
+              let params = []
+              for p in ylist(get(op, "parameters")) {
+                if ystr(get(p, "in")) == "path" {
+                  params.push(ystr(get(p, "name")))
+                }
+              }
+              let body_type = match ymap_get(op, "requestBody") {
+                Some(rb) => {
+                  let content = get(get(rb, "content"), "application/json")
+                  match schema_ref_name(get(content, "schema")) {
+                    Some(n) => Some(reserved_type_name(n))
+                    None => None
+                  }
+                }
+                None => None
+              }
+              ops.push({
+                operation_id: op_id,
+                http_method,
+                path,
+                description: ystr(get(op, "description")),
+                params,
+                body_type,
+                return_type: response_type(op),
+              })
+            }
+          _ => ()
+        }
+      }
+    _ => ()
+  }
+  ops
+}
+
+///|
+fn gen_handler(op : Operation) -> String {
+  let out = StringBuilder::new()
+  if op.description != "" {
+    for line in op.description.split("\n") {
+      out.write_string("/// " + line.to_string() + "\n")
+    }
+  }
+  out.write_string("///|\n")
+  let fn_name = operation_fn_name(op.operation_id)
+  let params = op.params.map(fn(p) { p + " : String" })
+  match op.body_type {
+    Some(t) => params.push("body : " + t)
+    None => ()
+  }
+  out.write_string(
+    "pub fn " +
+    fn_name +
+    "(" +
+    params.join(", ") +
+    ") -> " +
+    op.return_type +
+    " {\n",
+  )
+  out.write_string("  abort(\"not implemented: " + op.operation_id + "\")\n")
+  out.write_string("}\n")
+  out.to_string()
+}
+
+///|
+fn gen_route_table(ops : Array[Operation]) -> String {
+  let out = StringBuilder::new()
+  out.write_string("///|\n")
+  out.write_string("pub struct Route {\n")
+  out.write_string("  method : String\n")
+  out.write_string("  path : String\n")
+  out.write_string("  operation_id : String\n")
+  out.write_string("} derive(Show, Eq)\n\n")
+  out.write_string("///|\n")
+  out.write_string("pub fn routes() -> Array[Route] {\n  [\n")
+  for op in ops {
+    out.write_string(
+      "    { method: \"" +
+      op.http_method +
+      "\", path: \"" +
+      op.path +
+      "\", operation_id: \"" +
+      op.operation_id +
+      "\" },\n",
+    )
+  }
+  out.write_string("  ]\n}\n")
+  out.to_string()
+}
+
+///|
+/// Generates MoonBit server-side scaffolding (DTO structs, one handler
+/// stub per `operationId`, and a route table) from an OpenAPI 3.1
+/// document written in the plain block style handled by `parse_yaml`.
+pub fn generate_server(spec : String) -> String {
+  let root = parse_yaml(spec)
+  let ops = collect_operations(root)
+  let out = StringBuilder::new()
+  out.write_string(
+    "// Code generated by mbt-gen from openapi.yaml. DO NOT EDIT.\n\n",
+  )
+  out.write_string("// --- DTOs ---\n\n")
+  out.write_string(gen_schemas(root))
+  out.write_string("// --- Handlers ---\n\n")
+  for op in ops {
+    out.write_string(gen_handler(op))
+    out.write_string("\n")
+  }
+  out.write_string("// --- Router ---\n\n")
+  out.write_string(gen_route_table(ops))
+  out.to_string()
+}

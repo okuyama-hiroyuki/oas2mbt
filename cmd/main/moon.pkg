@@ -1,6 +1,6 @@
-// import {
-//   "username/mbt-gen" @lib,
-// }
+import {
+  "username/mbt-gen" @lib,
+}
 
 options(
   "is-main": true,

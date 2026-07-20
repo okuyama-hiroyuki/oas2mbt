@@ -1,0 +1,1286 @@
+///|
+/// Embedded copy of `openapi.yaml`, read by `generate_server`.
+pub let openapi_spec : String =
+  #|openapi: 3.1.0
+  #|info:
+  #|  title: tsubu-cloud admin API
+  #|  version: 1.1.0
+  #|tags:
+  #|  - name: Auth
+  #|  - name: Organizations
+  #|  - name: Apps
+  #|  - name: Credentials
+  #|  - name: Domains
+  #|paths:
+  #|  /api/cli/logout:
+  #|    post:
+  #|      operationId: Auth_logout
+  #|      description: |-
+  #|        Invalidates the CLI bearer credential referenced by `Authorization`.
+  #|        The CLI deletes its local credentials file regardless of outcome, so
+  #|        the server always returns 204 (even if the token was already gone).
+  #|      parameters: []
+  #|      responses:
+  #|        '204':
+  #|          description: 'There is no content to send for this request, but the headers may be useful. '
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Auth
+  #|  /api/organizations:
+  #|    get:
+  #|      operationId: Organizations_list
+  #|      description: List the organizations the caller's session belongs to (`tsubu org list`).
+  #|      parameters: []
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                type: array
+  #|                items:
+  #|                  $ref: '#/components/schemas/OrganizationDto'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Organizations
+  #|    post:
+  #|      operationId: Organizations_create
+  #|      description: Create an organization owned by the caller. 400 if `name` is blank.
+  #|      parameters: []
+  #|      responses:
+  #|        '201':
+  #|          description: The request has succeeded and a new resource has been created as a result.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/OrganizationDto'
+  #|        '400':
+  #|          description: The server could not understand the request due to invalid syntax.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Organizations
+  #|      requestBody:
+  #|        required: true
+  #|        content:
+  #|          application/json:
+  #|            schema:
+  #|              $ref: '#/components/schemas/CreateOrganizationBody'
+  #|  /api/organizations/{orgID}:
+  #|    delete:
+  #|      operationId: Organizations_delete
+  #|      description: Delete an organization and its tenant DB (best-effort).
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '204':
+  #|          description: 'There is no content to send for this request, but the headers may be useful. '
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Organizations
+  #|  /api/organizations/{orgID}/apps:
+  #|    get:
+  #|      operationId: Apps_list
+  #|      description: List apps in the organization.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                type: array
+  #|                items:
+  #|                  $ref: '#/components/schemas/AppDto'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|    post:
+  #|      operationId: Apps_create
+  #|      description: Create an app under the organization. 400 if `name` is blank.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '201':
+  #|          description: The request has succeeded and a new resource has been created as a result.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/AppDto'
+  #|        '400':
+  #|          description: The server could not understand the request due to invalid syntax.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|      requestBody:
+  #|        required: true
+  #|        content:
+  #|          application/json:
+  #|            schema:
+  #|              $ref: '#/components/schemas/CreateAppBody'
+  #|  /api/organizations/{orgID}/apps/{appID}:
+  #|    get:
+  #|      operationId: Apps_get
+  #|      description: Single-app lookup. 404 if the id does not match an app in the org.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: appID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/AppDto'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '404':
+  #|          description: The server cannot find the requested resource.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|    delete:
+  #|      operationId: Apps_delete
+  #|      description: Delete an app.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: appID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '204':
+  #|          description: 'There is no content to send for this request, but the headers may be useful. '
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|  /api/organizations/{orgID}/apps/{appID}/domain:
+  #|    post:
+  #|      operationId: Apps_setDomain
+  #|      description: |-
+  #|        Assign a custom hostname to an app. 400 if `hostname` is blank or
+  #|        the underlying tenant-DB write fails (note: handler coerces DB
+  #|        failures to 400, not 500).
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: appID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '204':
+  #|          description: 'There is no content to send for this request, but the headers may be useful. '
+  #|        '400':
+  #|          description: The server could not understand the request due to invalid syntax.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|      requestBody:
+  #|        required: true
+  #|        content:
+  #|          application/json:
+  #|            schema:
+  #|              $ref: '#/components/schemas/SetAppDomainBody'
+  #|  /api/organizations/{orgID}/apps/{appID}/domain/{hostname}:
+  #|    delete:
+  #|      operationId: Apps_clearDomain
+  #|      description: Remove a custom hostname from an app.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: appID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: hostname
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '204':
+  #|          description: 'There is no content to send for this request, but the headers may be useful. '
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|  /api/organizations/{orgID}/apps/{appID}/settings:
+  #|    get:
+  #|      operationId: Apps_getSettings
+  #|      description: |-
+  #|        Return app's default hostname, custom hostname (if any), and verified
+  #|        domains. 404 if the app id is unknown.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: appID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/AppSettingsResponse'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '404':
+  #|          description: The server cannot find the requested resource.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|  /api/organizations/{orgID}/apps/{appID}/versions:
+  #|    get:
+  #|      operationId: Apps_listVersions
+  #|      description: List versions of an app.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: appID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                type: array
+  #|                items:
+  #|                  $ref: '#/components/schemas/VersionDto'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|    post:
+  #|      operationId: Apps_createVersion
+  #|      description: |-
+  #|        Create a new version. After the tenant-side INSERT succeeds, fires a
+  #|        best-effort "warm" request at the core server so the new cwasm is
+  #|        compiled and cached before any real user request arrives. 400 if the
+  #|        body is malformed or `imageUrl` is blank.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: appID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '201':
+  #|          description: The request has succeeded and a new resource has been created as a result.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/VersionDto'
+  #|        '400':
+  #|          description: The server could not understand the request due to invalid syntax.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|      requestBody:
+  #|        required: true
+  #|        content:
+  #|          application/json:
+  #|            schema:
+  #|              $ref: '#/components/schemas/NewVersionBody'
+  #|  /api/organizations/{orgID}/apps/{appID}/versions/{versionID}/sessions:
+  #|    get:
+  #|      operationId: Apps_listSessions
+  #|      description: List execution sessions of a version.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: appID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: versionID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                type: array
+  #|                items:
+  #|                  $ref: '#/components/schemas/SessionDto'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|  /api/organizations/{orgID}/apps/{appID}/versions/{versionID}/sessions/{sessionID}/logs:
+  #|    get:
+  #|      operationId: Apps_listLogs
+  #|      description: List logs of an execution session.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: appID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: versionID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: sessionID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                type: array
+  #|                items:
+  #|                  $ref: '#/components/schemas/LogDto'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Apps
+  #|  /api/organizations/{orgID}/credentials:
+  #|    get:
+  #|      operationId: Credentials_list
+  #|      description: List credentials in the organization.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                type: array
+  #|                items:
+  #|                  $ref: '#/components/schemas/CredentialDto'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Credentials
+  #|    post:
+  #|      operationId: Credentials_create
+  #|      description: |-
+  #|        Register a credential (label / username / password). The password is
+  #|        envelope-encrypted at rest. 400 if any field is blank.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '201':
+  #|          description: The request has succeeded and a new resource has been created as a result.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/CredentialDto'
+  #|        '400':
+  #|          description: The server could not understand the request due to invalid syntax.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Credentials
+  #|      requestBody:
+  #|        required: true
+  #|        content:
+  #|          application/json:
+  #|            schema:
+  #|              $ref: '#/components/schemas/CreateCredentialBody'
+  #|  /api/organizations/{orgID}/credentials/{credentialID}:
+  #|    delete:
+  #|      operationId: Credentials_delete
+  #|      description: Delete a credential.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: credentialID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '204':
+  #|          description: 'There is no content to send for this request, but the headers may be useful. '
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Credentials
+  #|  /api/organizations/{orgID}/domains:
+  #|    get:
+  #|      operationId: Domains_list
+  #|      description: List verified domains owned by the organization.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                type: array
+  #|                items:
+  #|                  $ref: '#/components/schemas/DomainDto'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Domains
+  #|  /api/organizations/{orgID}/domains/pending:
+  #|    get:
+  #|      operationId: Domains_listPending
+  #|      description: List pending (unverified) domains.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                type: array
+  #|                items:
+  #|                  $ref: '#/components/schemas/PendingDomainDto'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Domains
+  #|    post:
+  #|      operationId: Domains_createPending
+  #|      description: |-
+  #|        Register a pending domain. Issues a `verificationToken` the caller
+  #|        must publish as a TXT record at `_tsubu-cloud-verify.<hostname>`.
+  #|        400 if `hostname` is blank.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '201':
+  #|          description: The request has succeeded and a new resource has been created as a result.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/PendingDomainDto'
+  #|        '400':
+  #|          description: The server could not understand the request due to invalid syntax.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Domains
+  #|      requestBody:
+  #|        required: true
+  #|        content:
+  #|          application/json:
+  #|            schema:
+  #|              $ref: '#/components/schemas/CreatePendingDomainBody'
+  #|  /api/organizations/{orgID}/domains/pending/{pendingDomainID}:
+  #|    delete:
+  #|      operationId: Domains_deletePending
+  #|      description: Delete a pending domain registration.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: pendingDomainID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '204':
+  #|          description: 'There is no content to send for this request, but the headers may be useful. '
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Domains
+  #|  /api/organizations/{orgID}/domains/pending/{pendingDomainID}/verify:
+  #|    post:
+  #|      operationId: Domains_verify
+  #|      description: |-
+  #|        Verify a pending domain by looking up TXT records at
+  #|        `_tsubu-cloud-verify.<hostname>` and matching against
+  #|        `verificationToken`. On success, promotes the pending domain to a
+  #|        verified `Domain`. 400 on DNS lookup failure / mismatch / DB write
+  #|        failure; 500 if the pending-domain fetch itself fails.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: pendingDomainID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '200':
+  #|          description: The request has succeeded.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/DomainDto'
+  #|        '400':
+  #|          description: The server could not understand the request due to invalid syntax.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Domains
+  #|  /api/organizations/{orgID}/domains/{domainID}:
+  #|    delete:
+  #|      operationId: Domains_delete
+  #|      description: Delete a verified domain.
+  #|      parameters:
+  #|        - name: orgID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|        - name: domainID
+  #|          in: path
+  #|          required: true
+  #|          schema:
+  #|            type: string
+  #|      responses:
+  #|        '204':
+  #|          description: 'There is no content to send for this request, but the headers may be useful. '
+  #|        '401':
+  #|          description: Access is unauthorized.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '403':
+  #|          description: Access is forbidden.
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|        '500':
+  #|          description: Server error
+  #|          content:
+  #|            application/json:
+  #|              schema:
+  #|                $ref: '#/components/schemas/Error'
+  #|      tags:
+  #|        - Domains
+  #|security:
+  #|  - TsubuAdminSession: []
+  #|components:
+  #|  schemas:
+  #|    AppDto:
+  #|      type: object
+  #|      required:
+  #|        - id
+  #|        - name
+  #|      properties:
+  #|        id:
+  #|          type: string
+  #|        name:
+  #|          type: string
+  #|    AppSettingsResponse:
+  #|      type: object
+  #|      required:
+  #|        - app
+  #|        - defaultHostname
+  #|        - customHostname
+  #|        - domains
+  #|      properties:
+  #|        app:
+  #|          $ref: '#/components/schemas/AppDto'
+  #|        defaultHostname:
+  #|          type: string
+  #|          description: '`<appId>.run.tsubu-cloud.net` — the platform-provisioned hostname.'
+  #|        customHostname:
+  #|          anyOf:
+  #|            - type: string
+  #|            - type: 'null'
+  #|          description: Currently assigned custom hostname, or `null` if no custom domain is wired.
+  #|        domains:
+  #|          type: array
+  #|          items:
+  #|            $ref: '#/components/schemas/DomainDto'
+  #|          description: Verified domains owned by the organization, surfaced for the picker UI.
+  #|    CreateAppBody:
+  #|      type: object
+  #|      required:
+  #|        - name
+  #|      properties:
+  #|        name:
+  #|          type: string
+  #|    CreateCredentialBody:
+  #|      type: object
+  #|      required:
+  #|        - label
+  #|        - username
+  #|        - password
+  #|      properties:
+  #|        label:
+  #|          type: string
+  #|        username:
+  #|          type: string
+  #|        password:
+  #|          type: string
+  #|    CreateOrganizationBody:
+  #|      type: object
+  #|      required:
+  #|        - name
+  #|      properties:
+  #|        name:
+  #|          type: string
+  #|    CreatePendingDomainBody:
+  #|      type: object
+  #|      required:
+  #|        - hostname
+  #|      properties:
+  #|        hostname:
+  #|          type: string
+  #|    CredentialDto:
+  #|      type: object
+  #|      required:
+  #|        - id
+  #|        - label
+  #|        - username
+  #|      properties:
+  #|        id:
+  #|          type: string
+  #|        label:
+  #|          type: string
+  #|        username:
+  #|          type: string
+  #|    DomainDto:
+  #|      type: object
+  #|      required:
+  #|        - id
+  #|        - hostname
+  #|        - verifiedAt
+  #|      properties:
+  #|        id:
+  #|          type: string
+  #|        hostname:
+  #|          type: string
+  #|        verifiedAt:
+  #|          type: string
+  #|          format: date-time
+  #|    Error:
+  #|      type: object
+  #|      required:
+  #|        - error
+  #|      properties:
+  #|        error:
+  #|          type: string
+  #|      description: |-
+  #|        Standard error envelope: `{"error": "<message>"}`.
+  #|        Mirrors `admin/handlers/Json.kt`'s `errorJson` / `call.fail`.
+  #|    FetchTargetBody:
+  #|      type: object
+  #|      required:
+  #|        - alias
+  #|        - targetUrl
+  #|      properties:
+  #|        alias:
+  #|          type: string
+  #|        targetUrl:
+  #|          type: string
+  #|    LogDto:
+  #|      type: object
+  #|      required:
+  #|        - logId
+  #|        - message
+  #|        - createdAt
+  #|      properties:
+  #|        logId:
+  #|          type: string
+  #|        message:
+  #|          type: string
+  #|        createdAt:
+  #|          type: string
+  #|          format: date-time
+  #|    NewVersionBody:
+  #|      type: object
+  #|      required:
+  #|        - imageUrl
+  #|        - fetchTargets
+  #|        - postgresTargets
+  #|        - variableTargets
+  #|      properties:
+  #|        imageUrl:
+  #|          type: string
+  #|        credentialId:
+  #|          anyOf:
+  #|            - type: string
+  #|            - type: 'null'
+  #|        fetchTargets:
+  #|          type: array
+  #|          items:
+  #|            $ref: '#/components/schemas/FetchTargetBody'
+  #|        postgresTargets:
+  #|          type: array
+  #|          items:
+  #|            $ref: '#/components/schemas/PostgresTargetBody'
+  #|        variableTargets:
+  #|          type: array
+  #|          items:
+  #|            $ref: '#/components/schemas/VariableTargetBody'
+  #|    OrganizationDto:
+  #|      type: object
+  #|      required:
+  #|        - id
+  #|        - name
+  #|      properties:
+  #|        id:
+  #|          type: string
+  #|        name:
+  #|          type: string
+  #|    PendingDomainDto:
+  #|      type: object
+  #|      required:
+  #|        - id
+  #|        - hostname
+  #|        - verificationToken
+  #|      properties:
+  #|        id:
+  #|          type: string
+  #|        hostname:
+  #|          type: string
+  #|        verificationToken:
+  #|          type: string
+  #|    PostgresTargetBody:
+  #|      type: object
+  #|      required:
+  #|        - alias
+  #|        - username
+  #|        - password
+  #|        - host
+  #|        - port
+  #|        - database
+  #|      properties:
+  #|        alias:
+  #|          type: string
+  #|        username:
+  #|          type: string
+  #|        password:
+  #|          type: string
+  #|        host:
+  #|          type: string
+  #|        port:
+  #|          type: string
+  #|        database:
+  #|          type: string
+  #|    SessionDto:
+  #|      type: object
+  #|      required:
+  #|        - sessionId
+  #|        - ipAddress
+  #|        - startedAt
+  #|        - finishedAt
+  #|      properties:
+  #|        sessionId:
+  #|          type: string
+  #|        ipAddress:
+  #|          type: string
+  #|        startedAt:
+  #|          type: string
+  #|          format: date-time
+  #|        finishedAt:
+  #|          type: string
+  #|          format: date-time
+  #|    SetAppDomainBody:
+  #|      type: object
+  #|      required:
+  #|        - hostname
+  #|      properties:
+  #|        hostname:
+  #|          type: string
+  #|    VariableTargetBody:
+  #|      type: object
+  #|      required:
+  #|        - alias
+  #|        - value
+  #|      properties:
+  #|        alias:
+  #|          type: string
+  #|        value:
+  #|          type: string
+  #|    VersionDto:
+  #|      type: object
+  #|      required:
+  #|        - versionId
+  #|        - imageUrl
+  #|      properties:
+  #|        versionId:
+  #|          type: string
+  #|        imageUrl:
+  #|          type: string
+  #|  securitySchemes:
+  #|    TsubuAdminSession:
+  #|      type: http
+  #|      scheme: bearer
+  #|      description: Bearer token issued by `tsubu login` (writes `~/.config/tsubu/credentials`). Browser sessions are also accepted via the signed `tsubu_admin_session` cookie set after Google OAuth; both resolve to the same `admin_sessions` row.
+  #|
