@@ -1,0 +1,13 @@
+{
+  "name": "okuyama-hiroyuki/oas2mbt",
+  "version": "0.1.0",
+  "readme": "README.mbt.md",
+  "repository": "",
+  "license": "Apache-2.0",
+  "keywords": [],
+  "preferred-target": "native",
+  "description": "",
+  "deps": {
+    "moonbitlang/async": "0.20.2"
+  }
+}
