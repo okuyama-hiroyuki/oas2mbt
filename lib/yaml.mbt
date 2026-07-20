@@ -42,7 +42,7 @@ fn tokenize(src : String) -> Array[Line] {
 fn unquote(s : String) -> String {
   let s = s.trim(chars=" ").to_owned()
   if s.length() >= 2 && s[0] == '\'' && s[s.length() - 1] == '\'' {
-    s.substring(start=1, end=s.length() - 1).replace_all(old="''", new="'")
+    s[1:s.length() - 1].to_owned().replace_all(old="''", new="'")
   } else {
     s
   }
@@ -60,8 +60,8 @@ fn split_kv(text : String) -> (String, String) {
   while i < n {
     let c = text[i]
     if c == '\'' {
-      in_quote = not(in_quote)
-    } else if not(in_quote) && c == ':' && (i + 1 == n || text[i + 1] == ' ') {
+      in_quote = !in_quote
+    } else if !in_quote && c == ':' && (i + 1 == n || text[i + 1] == ' ') {
       found = i
       break
     }
@@ -70,11 +70,11 @@ fn split_kv(text : String) -> (String, String) {
   if found < 0 {
     (text, "")
   } else {
-    let key = text.substring(start=0, end=found).trim(chars=" ").to_owned()
+    let key = text[0:found].to_owned().trim(chars=" ").to_owned()
     let value = if found + 1 >= n {
       ""
     } else {
-      text.substring(start=found + 1, end=n).trim(chars=" ").to_owned()
+      text[found + 1:n].to_owned().trim(chars=" ").to_owned()
     }
     (key, value)
   }
@@ -104,7 +104,7 @@ fn parse_list(lines : Array[Line], start : Int, indent : Int) -> (Yaml, Int) {
     let rest = if lines[i].text == "-" {
       ""
     } else {
-      lines[i].text.substring(start=2, end=lines[i].text.length())
+      lines[i].text[2:].to_owned()
     }
     let item_indent = indent + 2
     if rest == "" {
@@ -145,7 +145,7 @@ fn parse_map(lines : Array[Line], start : Int, indent : Int) -> (Yaml, Int) {
   let mut i = start
   while i < lines.length() &&
         lines[i].indent == indent &&
-        not(lines[i].text.has_prefix("- ")) &&
+        !lines[i].text.has_prefix("- ") &&
         lines[i].text != "-" {
     let (raw_key, raw_value) = split_kv(lines[i].text)
     let key = unquote(raw_key)

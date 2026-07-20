@@ -14,7 +14,7 @@ fn last_segment(s : String, sep : String) -> String {
   if parts.length() == 0 {
     s
   } else {
-    parts[parts.length() - 1].to_string()
+    parts[parts.length() - 1].to_owned()
   }
 }
 
@@ -85,7 +85,7 @@ fn to_snake_case(s : String) -> String {
       if i != 0 {
         out.write_char('_')
       }
-      out.write_char(Char::from_int(c.to_int() + 32))
+      out.write_char((c.to_int() + 32).unsafe_to_char())
     } else {
       out.write_char(c)
     }
@@ -105,7 +105,7 @@ fn operation_fn_name(operation_id : String) -> String {
 
 ///|
 fn wrap_optional(ty : String, optional : Bool) -> String {
-  if optional && not(ty.has_suffix("?")) {
+  if optional && !ty.has_suffix("?") {
     ty + "?"
   } else {
     ty
@@ -123,7 +123,7 @@ fn gen_struct(name : String, schema : Yaml) -> String {
       match ymap_get(schema, "description") {
         Some(YStr(d)) =>
           for line in d.split("\n") {
-            out.write_string("/// " + line.to_string() + "\n")
+            out.write_string("/// " + line.to_owned() + "\n")
           }
         _ => ()
       }
@@ -134,7 +134,7 @@ fn gen_struct(name : String, schema : Yaml) -> String {
     YMap(entries) =>
       for kv in entries {
         let (base, nullable) = moon_type(kv.1)
-        let optional = nullable || not(contains_str(required, kv.0))
+        let optional = nullable || !contains_str(required, kv.0)
         let ty = wrap_optional(base, optional)
         out.write_string("  " + kv.0 + " : " + ty + "\n")
       }
@@ -264,7 +264,7 @@ fn gen_handler(op : Operation) -> String {
   let out = StringBuilder::new()
   if op.description != "" {
     for line in op.description.split("\n") {
-      out.write_string("/// " + line.to_string() + "\n")
+      out.write_string("/// " + line.to_owned() + "\n")
     }
   }
   out.write_string("///|\n")
