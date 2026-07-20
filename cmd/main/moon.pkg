@@ -1,9 +1,9 @@
 import {
   "username/mbt-gen" @lib,
   "moonbitlang/x/encoding" @encoding,
+  "moonbitlang/core/buffer" @buffer,
 }
 
 options(
   "is-main": true,
-  "native-stub": ["stdin_native.c"],
 )
