@@ -152,9 +152,11 @@ fn gen_struct(name : String, schema : Yaml) -> String {
       }
     _ => ()
   }
-  out.write_string("pub struct " + name + " {\n")
+  out.write_string("pub(all) struct " + name + " {\n")
   for f in struct_fields(schema) {
-    out.write_string("  " + f.name + " : " + wrap_optional(f.base_ty, f.optional) + "\n")
+    out.write_string(
+      "  " + f.name + " : " + wrap_optional(f.base_ty, f.optional) + "\n",
+    )
   }
   out.write_string("} derive(Show, Eq, ToJson, FromJson)\n")
   out.to_string()
@@ -330,9 +332,16 @@ fn gen_trait_method(op : Operation) -> String {
     Some(t) => params.push("body : " + t)
     None => ()
   }
+  params.insert(0, "headers : Map[String, String]")
   params.insert(0, "self : Self")
   out.write_string(
-    "  " + fn_name + "(" + params.join(", ") + ") -> " + op.return_type + "\n",
+    "  async " +
+    fn_name +
+    "(" +
+    params.join(", ") +
+    ") -> " +
+    op.return_type +
+    " raise ApiError\n",
   )
   out.to_string()
 }
@@ -346,7 +355,7 @@ fn gen_trait_method(op : Operation) -> String {
 fn gen_trait(ops : Array[Operation]) -> String {
   let out = StringBuilder::new()
   out.write_string("///|\n")
-  out.write_string("pub trait ApiHandler {\n")
+  out.write_string("pub(open) trait ApiHandler {\n")
   for op in ops {
     out.write_string(gen_trait_method(op))
   }
@@ -358,7 +367,7 @@ fn gen_trait(ops : Array[Operation]) -> String {
 fn gen_route_table(ops : Array[Operation]) -> String {
   let out = StringBuilder::new()
   out.write_string("///|\n")
-  out.write_string("pub enum HttpMethod {\n")
+  out.write_string("pub(all) enum HttpMethod {\n")
   out.write_string("  Get\n")
   out.write_string("  Post\n")
   out.write_string("  Put\n")
@@ -399,7 +408,7 @@ fn gen_route_table(ops : Array[Operation]) -> String {
 fn gen_dispatch_arm(op : Operation) -> String {
   let out = StringBuilder::new()
   let fn_name = operation_fn_name(op.operation_id)
-  let args = []
+  let args = ["headers"]
   for i, _ in op.params {
     args.push("params[" + i.to_string() + "]")
   }
@@ -410,36 +419,50 @@ fn gen_dispatch_arm(op : Operation) -> String {
       "{ status: 200, body: " + result_var + ".to_json().stringify() }"
     }
   }
+  // The handler call itself is wrapped in its own try/catch so a raised
+  // ApiError becomes a status-coded Response, distinct from the outer
+  // (body-parsing) catch below, which only ever sees JSON decode errors.
+  let call_and_respond = fn(call : String) -> String {
+    let inner = StringBuilder::new()
+    inner.write_string("try {\n")
+    if op.return_type == "Unit" {
+      inner.write_string("          " + call + "\n")
+      inner.write_string("          " + respond("") + "\n")
+    } else {
+      inner.write_string("          let __result = " + call + "\n")
+      inner.write_string("          " + respond("__result") + "\n")
+    }
+    inner.write_string("        } catch {\n")
+    inner.write_string(
+      "          ApiError(status, message) => { status, body: __api_error_body(message) }\n",
+    )
+    inner.write_string("        }")
+    inner.to_string()
+  }
   out.write_string("    \"" + op.operation_id + "\" => {\n")
   match op.body_type {
     None => {
       let call = "handler." + fn_name + "(" + args.join(", ") + ")"
-      if op.return_type == "Unit" {
-        out.write_string("      " + call + "\n")
-        out.write_string("      " + respond("") + "\n")
-      } else {
-        out.write_string("      let __result = " + call + "\n")
-        out.write_string("      " + respond("__result") + "\n")
-      }
+      out.write_string("      " + call_and_respond(call) + "\n")
     }
     Some(body_ty) => {
       args.push("__body")
       let call = "handler." + fn_name + "(" + args.join(", ") + ")"
       out.write_string("      match body {\n")
-      out.write_string("        None => { status: 400, body: \"{\\\"error\\\":\\\"missing body\\\"}\" }\n")
+      out.write_string(
+        "        None => { status: 400, body: \"{\\\"error\\\":\\\"missing body\\\"}\" }\n",
+      )
       out.write_string("        Some(__raw) => try {\n")
       out.write_string(
-        "          let __body : " + body_ty + " = @json.from_json(@json.parse(__raw))\n",
+        "          let __body : " +
+        body_ty +
+        " = @json.from_json(@json.parse(__raw))\n",
       )
-      if op.return_type == "Unit" {
-        out.write_string("          " + call + "\n")
-        out.write_string("          " + respond("") + "\n")
-      } else {
-        out.write_string("          let __result = " + call + "\n")
-        out.write_string("          " + respond("__result") + "\n")
-      }
+      out.write_string("          " + call_and_respond(call) + "\n")
       out.write_string("        } catch {\n")
-      out.write_string("          _ => { status: 400, body: \"{\\\"error\\\":\\\"invalid body\\\"}\" }\n")
+      out.write_string(
+        "          _ => { status: 400, body: \"{\\\"error\\\":\\\"invalid body\\\"}\" }\n",
+      )
       out.write_string("        }\n")
       out.write_string("      }\n")
     }
@@ -455,9 +478,10 @@ fn gen_dispatch_arm(op : Operation) -> String {
 fn gen_dispatcher(ops : Array[Operation]) -> String {
   let out = StringBuilder::new()
   out.write_string("///|\n")
-  out.write_string("pub struct Request {\n")
+  out.write_string("pub(all) struct Request {\n")
   out.write_string("  method : HttpMethod\n")
   out.write_string("  path : String\n")
+  out.write_string("  headers : Map[String, String]\n")
   out.write_string("  body : String?\n")
   out.write_string("} derive(Show, Eq)\n\n")
   out.write_string("///|\n")
@@ -465,6 +489,34 @@ fn gen_dispatcher(ops : Array[Operation]) -> String {
   out.write_string("  status : Int\n")
   out.write_string("  body : String\n")
   out.write_string("} derive(Show, Eq)\n\n")
+  out.write_string("///|\n")
+  out.write_string(
+    "/// Raised by an `ApiHandler` method to short-circuit with a specific\n",
+  )
+  out.write_string(
+    "/// HTTP status code and a `{\"error\": message}` JSON body, e.g.\n",
+  )
+  out.write_string("/// `raise ApiError(404, \"app not found\")`.\n")
+  out.write_string("pub(all) suberror ApiError {\n")
+  out.write_string("  ApiError(Int, String)\n")
+  out.write_string("} derive(Show)\n\n")
+  out.write_string("///|\n")
+  out.write_string("fn __api_error_body(message : String) -> String {\n")
+  out.write_string("  let out = StringBuilder::new()\n")
+  out.write_string("  out.write_string(\"{\\\"error\\\":\\\"\")\n")
+  out.write_string("  for c in message {\n")
+  out.write_string("    match c {\n")
+  out.write_string("      '\"' => out.write_string(\"\\\\\\\"\")\n")
+  out.write_string("      '\\\\' => out.write_string(\"\\\\\\\\\")\n")
+  out.write_string("      '\\n' => out.write_string(\"\\\\n\")\n")
+  out.write_string("      '\\r' => out.write_string(\"\\\\r\")\n")
+  out.write_string("      '\\t' => out.write_string(\"\\\\t\")\n")
+  out.write_string("      _ => out.write_char(c)\n")
+  out.write_string("    }\n")
+  out.write_string("  }\n")
+  out.write_string("  out.write_string(\"\\\"}\")\n")
+  out.write_string("  out.to_string()\n")
+  out.write_string("}\n\n")
   out.write_string("///|\n")
   out.write_string("fn split_path(p : String) -> Array[String] {\n")
   out.write_string("  let out = []\n")
@@ -474,9 +526,15 @@ fn gen_dispatcher(ops : Array[Operation]) -> String {
   out.write_string("  out\n")
   out.write_string("}\n\n")
   out.write_string("///|\n")
-  out.write_string("/// Matches a `{param}`-templated route path against a concrete request\n")
-  out.write_string("/// path, returning the captured path parameters in template order.\n")
-  out.write_string("fn match_path(template : String, path : String) -> Array[String]? {\n")
+  out.write_string(
+    "/// Matches a `{param}`-templated route path against a concrete request\n",
+  )
+  out.write_string(
+    "/// path, returning the captured path parameters in template order.\n",
+  )
+  out.write_string(
+    "fn match_path(template : String, path : String) -> Array[String]? {\n",
+  )
   out.write_string("  let tparts = split_path(template)\n")
   out.write_string("  let pparts = split_path(path)\n")
   out.write_string("  if tparts.length() != pparts.length() {\n")
@@ -495,27 +553,39 @@ fn gen_dispatcher(ops : Array[Operation]) -> String {
   out.write_string("}\n\n")
   out.write_string("///|\n")
   out.write_string(
-    "fn dispatch(handler : &ApiHandler, operation_id : String, params : Array[String], body : String?) -> Response {\n",
+    "async fn dispatch(handler : &ApiHandler, operation_id : String, params : Array[String], headers : Map[String, String], body : String?) -> Response {\n",
   )
   out.write_string("  match operation_id {\n")
   for op in ops {
     out.write_string(gen_dispatch_arm(op))
   }
-  out.write_string("    _ => { status: 404, body: \"{\\\"error\\\":\\\"not found\\\"}\" }\n")
+  out.write_string(
+    "    _ => { status: 404, body: \"{\\\"error\\\":\\\"not found\\\"}\" }\n",
+  )
   out.write_string("  }\n}\n\n")
   out.write_string("///|\n")
-  out.write_string("/// Routes a `Request` to the matching `ApiHandler` method, parsing its\n")
-  out.write_string("/// body (if any) and encoding the result as a `Response`.\n")
-  out.write_string("pub fn handle_request(handler : &ApiHandler, req : Request) -> Response {\n")
+  out.write_string(
+    "/// Routes a `Request` to the matching `ApiHandler` method, parsing its\n",
+  )
+  out.write_string(
+    "/// body (if any) and encoding the result as a `Response`.\n",
+  )
+  out.write_string(
+    "pub async fn handle_request(handler : &ApiHandler, req : Request) -> Response {\n",
+  )
   out.write_string("  for route in routes() {\n")
   out.write_string("    if route.method == req.method {\n")
   out.write_string("      match match_path(route.path, req.path) {\n")
-  out.write_string("        Some(params) => return dispatch(handler, route.operation_id, params, req.body)\n")
+  out.write_string(
+    "        Some(params) => return dispatch(handler, route.operation_id, params, req.headers, req.body)\n",
+  )
   out.write_string("        None => ()\n")
   out.write_string("      }\n")
   out.write_string("    }\n")
   out.write_string("  }\n")
-  out.write_string("  { status: 404, body: \"{\\\"error\\\":\\\"not found\\\"}\" }\n")
+  out.write_string(
+    "  { status: 404, body: \"{\\\"error\\\":\\\"not found\\\"}\" }\n",
+  )
   out.write_string("}\n")
   out.to_string()
 }
