@@ -1,0 +1,7 @@
+// import {
+//   "username/mbt-gen" @lib,
+// }
+
+options(
+  "is-main": true,
+)
