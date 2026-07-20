@@ -172,9 +172,50 @@ fn gen_schemas(root : Yaml) -> String {
 }
 
 ///|
+priv enum HttpMethod {
+  Get
+  Post
+  Put
+  Delete
+  Patch
+  Head
+  Options
+  Trace
+}
+
+///|
+fn http_method_name(m : HttpMethod) -> String {
+  match m {
+    Get => "Get"
+    Post => "Post"
+    Put => "Put"
+    Delete => "Delete"
+    Patch => "Patch"
+    Head => "Head"
+    Options => "Options"
+    Trace => "Trace"
+  }
+}
+
+///|
+fn http_method_of(s : String) -> HttpMethod {
+  match s {
+    "get" => Get
+    "post" => Post
+    "put" => Put
+    "delete" => Delete
+    "patch" => Patch
+    "head" => Head
+    "options" => Options
+    "trace" => Trace
+    _ => abort("unknown http method: " + s)
+  }
+}
+
+///|
 priv struct Operation {
   operation_id : String
-  http_method : String
+  http_method : HttpMethod
   path : String
   description : String
   params : Array[String]
@@ -219,7 +260,7 @@ fn collect_operations(root : Yaml) -> Array[Operation] {
         match pkv.1 {
           YMap(methods) =>
             for mkv in methods {
-              let http_method = mkv.0
+              let http_method = http_method_of(mkv.0)
               let op = mkv.1
               let op_id = ystr(get(op, "operationId"))
               if op_id == "" {
@@ -292,8 +333,19 @@ fn gen_handler(op : Operation) -> String {
 fn gen_route_table(ops : Array[Operation]) -> String {
   let out = StringBuilder::new()
   out.write_string("///|\n")
+  out.write_string("pub enum HttpMethod {\n")
+  out.write_string("  Get\n")
+  out.write_string("  Post\n")
+  out.write_string("  Put\n")
+  out.write_string("  Delete\n")
+  out.write_string("  Patch\n")
+  out.write_string("  Head\n")
+  out.write_string("  Options\n")
+  out.write_string("  Trace\n")
+  out.write_string("} derive(Show, Eq)\n\n")
+  out.write_string("///|\n")
   out.write_string("pub struct Route {\n")
-  out.write_string("  method : String\n")
+  out.write_string("  method : HttpMethod\n")
   out.write_string("  path : String\n")
   out.write_string("  operation_id : String\n")
   out.write_string("} derive(Show, Eq)\n\n")
@@ -301,9 +353,9 @@ fn gen_route_table(ops : Array[Operation]) -> String {
   out.write_string("pub fn routes() -> Array[Route] {\n  [\n")
   for op in ops {
     out.write_string(
-      "    { method: \"" +
-      op.http_method +
-      "\", path: \"" +
+      "    { method: " +
+      http_method_name(op.http_method) +
+      ", path: \"" +
       op.path +
       "\", operation_id: \"" +
       op.operation_id +
