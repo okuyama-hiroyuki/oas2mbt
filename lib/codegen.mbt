@@ -1,11 +1,12 @@
 // ---------------------------------------------------------------------
 // OpenAPI -> MoonBit server-side scaffolding generator.
 //
-// Reads `components.schemas` into MoonBit structs and `paths` into one
-// handler-function stub per `operationId`, plus a route table wiring
-// method + path + operationId together. Handler bodies are left as
-// `abort(...)` stubs; the caller fills in real logic and, if desired,
-// wires `routes()` into whatever HTTP framework they use.
+// Reads `components.schemas` into MoonBit structs and `paths` into a
+// single `ApiHandler` trait with one method per `operationId`, plus a
+// route table wiring method + path + operationId together. The caller
+// implements `ApiHandler` on their own type to provide the real
+// handler logic, then wires `routes()` into whatever HTTP framework
+// they use, dispatching on `operation_id` to the matching method.
 // ---------------------------------------------------------------------
 
 ///|
@@ -301,30 +302,39 @@ fn collect_operations(root : Yaml) -> Array[Operation] {
 }
 
 ///|
-fn gen_handler(op : Operation) -> String {
+fn gen_trait_method(op : Operation) -> String {
   let out = StringBuilder::new()
   if op.description != "" {
     for line in op.description.split("\n") {
-      out.write_string("/// " + line.to_owned() + "\n")
+      out.write_string("  /// " + line.to_owned() + "\n")
     }
   }
-  out.write_string("///|\n")
   let fn_name = operation_fn_name(op.operation_id)
   let params = op.params.map(fn(p) { p + " : String" })
   match op.body_type {
     Some(t) => params.push("body : " + t)
     None => ()
   }
+  params.insert(0, "self : Self")
   out.write_string(
-    "pub fn " +
-    fn_name +
-    "(" +
-    params.join(", ") +
-    ") -> " +
-    op.return_type +
-    " {\n",
+    "  " + fn_name + "(" + params.join(", ") + ") -> " + op.return_type + "\n",
   )
-  out.write_string("  abort(\"not implemented: " + op.operation_id + "\")\n")
+  out.to_string()
+}
+
+///|
+/// Generates a single `ApiHandler` trait with one method per operation.
+/// The caller defines a type implementing this trait to provide the
+/// real handler logic, then wires `routes()` into whatever HTTP
+/// framework they use, dispatching on `operation_id` to the matching
+/// trait method.
+fn gen_trait(ops : Array[Operation]) -> String {
+  let out = StringBuilder::new()
+  out.write_string("///|\n")
+  out.write_string("pub trait ApiHandler {\n")
+  for op in ops {
+    out.write_string(gen_trait_method(op))
+  }
   out.write_string("}\n")
   out.to_string()
 }
@@ -379,11 +389,9 @@ pub fn generate_server(spec : String) -> String {
   )
   out.write_string("// --- DTOs ---\n\n")
   out.write_string(gen_schemas(root))
-  out.write_string("// --- Handlers ---\n\n")
-  for op in ops {
-    out.write_string(gen_handler(op))
-    out.write_string("\n")
-  }
+  out.write_string("// --- Handler Trait ---\n\n")
+  out.write_string(gen_trait(ops))
+  out.write_string("\n")
   out.write_string("// --- Router ---\n\n")
   out.write_string(gen_route_table(ops))
   out.to_string()
