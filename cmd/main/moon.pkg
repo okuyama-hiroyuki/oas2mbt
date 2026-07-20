@@ -1,5 +1,5 @@
 import {
-  "username/mbt-gen" @lib,
+  "username/mbt-gen/lib" @lib,
   "moonbitlang/async",
   "moonbitlang/async/stdio" @stdio,
 }
