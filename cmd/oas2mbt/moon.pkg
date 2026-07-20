@@ -1,7 +1,8 @@
 import {
-  "okuyama-hiroyuki/oas2mbt/lib" @lib,
+  "okuyama-hiroyuki/oas2mbt/lib",
   "moonbitlang/async",
-  "moonbitlang/async/stdio" @stdio,
+  "moonbitlang/async/stdio",
+  "moonbitlang/x/sys",
 }
 
 supported_targets = "+native"
