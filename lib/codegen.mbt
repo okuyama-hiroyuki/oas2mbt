@@ -114,9 +114,31 @@ fn wrap_optional(ty : String, optional : Bool) -> String {
 }
 
 ///|
-fn gen_struct(name : String, schema : Yaml) -> String {
+priv struct Field {
+  name : String
+  base_ty : String
+  optional : Bool
+}
+
+///|
+fn struct_fields(schema : Yaml) -> Array[Field] {
   let required = ylist(get(schema, "required")).map(ystr)
   let props = get(schema, "properties")
+  let fields = []
+  match props {
+    YMap(entries) =>
+      for kv in entries {
+        let (base, nullable) = moon_type(kv.1)
+        let optional = nullable || !contains_str(required, kv.0)
+        fields.push({ name: kv.0, base_ty: base, optional })
+      }
+    _ => ()
+  }
+  fields
+}
+
+///|
+fn gen_struct(name : String, schema : Yaml) -> String {
   let out = StringBuilder::new()
   out.write_string("///|\n")
   match schema {
@@ -131,17 +153,10 @@ fn gen_struct(name : String, schema : Yaml) -> String {
     _ => ()
   }
   out.write_string("pub struct " + name + " {\n")
-  match props {
-    YMap(entries) =>
-      for kv in entries {
-        let (base, nullable) = moon_type(kv.1)
-        let optional = nullable || !contains_str(required, kv.0)
-        let ty = wrap_optional(base, optional)
-        out.write_string("  " + kv.0 + " : " + ty + "\n")
-      }
-    _ => ()
+  for f in struct_fields(schema) {
+    out.write_string("  " + f.name + " : " + wrap_optional(f.base_ty, f.optional) + "\n")
   }
-  out.write_string("} derive(Show, Eq)\n")
+  out.write_string("} derive(Show, Eq, ToJson, FromJson)\n")
   out.to_string()
 }
 
@@ -377,6 +392,135 @@ fn gen_route_table(ops : Array[Operation]) -> String {
 }
 
 ///|
+/// Builds the argument list for calling `handler.<op>(...)`: one
+/// `params[i]` per path parameter, plus the parsed body variable if the
+/// operation takes one. Bodies are decoded and results are encoded via
+/// the DTOs' derived `ToJson`/`FromJson` implementations.
+fn gen_dispatch_arm(op : Operation) -> String {
+  let out = StringBuilder::new()
+  let fn_name = operation_fn_name(op.operation_id)
+  let args = []
+  for i, _ in op.params {
+    args.push("params[" + i.to_string() + "]")
+  }
+  let respond = fn(result_var : String) -> String {
+    if op.return_type == "Unit" {
+      "{ status: 204, body: \"\" }"
+    } else {
+      "{ status: 200, body: " + result_var + ".to_json().stringify() }"
+    }
+  }
+  out.write_string("    \"" + op.operation_id + "\" => {\n")
+  match op.body_type {
+    None => {
+      let call = "handler." + fn_name + "(" + args.join(", ") + ")"
+      if op.return_type == "Unit" {
+        out.write_string("      " + call + "\n")
+        out.write_string("      " + respond("") + "\n")
+      } else {
+        out.write_string("      let __result = " + call + "\n")
+        out.write_string("      " + respond("__result") + "\n")
+      }
+    }
+    Some(body_ty) => {
+      args.push("__body")
+      let call = "handler." + fn_name + "(" + args.join(", ") + ")"
+      out.write_string("      match body {\n")
+      out.write_string("        None => { status: 400, body: \"{\\\"error\\\":\\\"missing body\\\"}\" }\n")
+      out.write_string("        Some(__raw) => try {\n")
+      out.write_string(
+        "          let __body : " + body_ty + " = @json.from_json(@json.parse(__raw))\n",
+      )
+      if op.return_type == "Unit" {
+        out.write_string("          " + call + "\n")
+        out.write_string("          " + respond("") + "\n")
+      } else {
+        out.write_string("          let __result = " + call + "\n")
+        out.write_string("          " + respond("__result") + "\n")
+      }
+      out.write_string("        } catch {\n")
+      out.write_string("          _ => { status: 400, body: \"{\\\"error\\\":\\\"invalid body\\\"}\" }\n")
+      out.write_string("        }\n")
+      out.write_string("      }\n")
+    }
+  }
+  out.write_string("    }\n")
+  out.to_string()
+}
+
+///|
+/// Generates the `Request`/`Response` types, a path-template matcher,
+/// and `handle_request`, which routes a `Request` to the matching
+/// `ApiHandler` method and encodes its result as a `Response`.
+fn gen_dispatcher(ops : Array[Operation]) -> String {
+  let out = StringBuilder::new()
+  out.write_string("///|\n")
+  out.write_string("pub struct Request {\n")
+  out.write_string("  method : HttpMethod\n")
+  out.write_string("  path : String\n")
+  out.write_string("  body : String?\n")
+  out.write_string("} derive(Show, Eq)\n\n")
+  out.write_string("///|\n")
+  out.write_string("pub struct Response {\n")
+  out.write_string("  status : Int\n")
+  out.write_string("  body : String\n")
+  out.write_string("} derive(Show, Eq)\n\n")
+  out.write_string("///|\n")
+  out.write_string("fn split_path(p : String) -> Array[String] {\n")
+  out.write_string("  let out = []\n")
+  out.write_string("  for part in p.split(\"/\") {\n")
+  out.write_string("    out.push(part.to_owned())\n")
+  out.write_string("  }\n")
+  out.write_string("  out\n")
+  out.write_string("}\n\n")
+  out.write_string("///|\n")
+  out.write_string("/// Matches a `{param}`-templated route path against a concrete request\n")
+  out.write_string("/// path, returning the captured path parameters in template order.\n")
+  out.write_string("fn match_path(template : String, path : String) -> Array[String]? {\n")
+  out.write_string("  let tparts = split_path(template)\n")
+  out.write_string("  let pparts = split_path(path)\n")
+  out.write_string("  if tparts.length() != pparts.length() {\n")
+  out.write_string("    return None\n")
+  out.write_string("  }\n")
+  out.write_string("  let params = []\n")
+  out.write_string("  for i, t in tparts {\n")
+  out.write_string("    let p = pparts[i]\n")
+  out.write_string("    if t.has_prefix(\"{\") && t.has_suffix(\"}\") {\n")
+  out.write_string("      params.push(p)\n")
+  out.write_string("    } else if t != p {\n")
+  out.write_string("      return None\n")
+  out.write_string("    }\n")
+  out.write_string("  }\n")
+  out.write_string("  Some(params)\n")
+  out.write_string("}\n\n")
+  out.write_string("///|\n")
+  out.write_string(
+    "fn dispatch(handler : &ApiHandler, operation_id : String, params : Array[String], body : String?) -> Response {\n",
+  )
+  out.write_string("  match operation_id {\n")
+  for op in ops {
+    out.write_string(gen_dispatch_arm(op))
+  }
+  out.write_string("    _ => { status: 404, body: \"{\\\"error\\\":\\\"not found\\\"}\" }\n")
+  out.write_string("  }\n}\n\n")
+  out.write_string("///|\n")
+  out.write_string("/// Routes a `Request` to the matching `ApiHandler` method, parsing its\n")
+  out.write_string("/// body (if any) and encoding the result as a `Response`.\n")
+  out.write_string("pub fn handle_request(handler : &ApiHandler, req : Request) -> Response {\n")
+  out.write_string("  for route in routes() {\n")
+  out.write_string("    if route.method == req.method {\n")
+  out.write_string("      match match_path(route.path, req.path) {\n")
+  out.write_string("        Some(params) => return dispatch(handler, route.operation_id, params, req.body)\n")
+  out.write_string("        None => ()\n")
+  out.write_string("      }\n")
+  out.write_string("    }\n")
+  out.write_string("  }\n")
+  out.write_string("  { status: 404, body: \"{\\\"error\\\":\\\"not found\\\"}\" }\n")
+  out.write_string("}\n")
+  out.to_string()
+}
+
+///|
 /// Generates MoonBit server-side scaffolding (DTO structs, one handler
 /// stub per `operationId`, and a route table) from an OpenAPI 3.1
 /// document written in the plain block style handled by `parse_yaml`.
@@ -385,7 +529,11 @@ pub fn generate_server(spec : String) -> String {
   let ops = collect_operations(root)
   let out = StringBuilder::new()
   out.write_string(
-    "// Code generated by mbt-gen from openapi.yaml. DO NOT EDIT.\n\n",
+    "// Code generated by mbt-gen from openapi.yaml. DO NOT EDIT.\n" +
+    "//\n" +
+    "// Requires \"moonbitlang/core/json\" imported as `@json` in this\n" +
+    "// package's moon.pkg.json, e.g.:\n" +
+    "//   { \"import\": [\"moonbitlang/core/json\"] }\n\n",
   )
   out.write_string("// --- DTOs ---\n\n")
   out.write_string(gen_schemas(root))
@@ -394,5 +542,8 @@ pub fn generate_server(spec : String) -> String {
   out.write_string("\n")
   out.write_string("// --- Router ---\n\n")
   out.write_string(gen_route_table(ops))
+  out.write_string("\n")
+  out.write_string("// --- Dispatcher ---\n\n")
+  out.write_string(gen_dispatcher(ops))
   out.to_string()
 }
