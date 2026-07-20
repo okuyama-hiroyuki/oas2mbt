@@ -1,9 +1,9 @@
 import {
   "username/mbt-gen" @lib,
-  "moonbitlang/x/encoding" @encoding,
-  "moonbitlang/core/buffer" @buffer,
+  "moonbitlang/async",
+  "moonbitlang/async/stdio" @stdio,
 }
 
-options(
-  "is-main": true,
-)
+supported_targets = "+native"
+
+pkgtype(kind: "executable")
