@@ -154,11 +154,24 @@ fn gen_struct(name : String, schema : Yaml) -> String {
   }
   out.write_string("pub(all) struct " + name + " {\n")
   for f in struct_fields(schema) {
+    if contains_str(reserved_field_words, f.name) {
+      abort(
+        "oas2mbt: schema property \"" +
+        f.name +
+        "\" on \"" +
+        name +
+        "\" is a MoonBit reserved word (see `reserved_field_words` in " +
+        "lib/codegen.mbt) and would only trigger a compiler warning if " +
+        "used as-is. Rename it in the OpenAPI schema; it cannot be " +
+        "renamed here without breaking the JSON wire format the schema " +
+        "describes.",
+      )
+    }
     out.write_string(
       "  " + f.name + " : " + wrap_optional(f.base_ty, f.optional) + "\n",
     )
   }
-  out.write_string("} derive(Show, Eq, ToJson, FromJson)\n")
+  out.write_string("} derive(Debug, Eq, ToJson, FromJson)\n")
   out.to_string()
 }
 
@@ -173,6 +186,22 @@ fn reserved_type_name(name : String) -> String {
     name
   }
 }
+
+///|
+/// Identifiers MoonBit warns are "reserved for possible future use" (not
+/// hard keywords, so they still compile, but `moon check` flags them).
+/// Unlike `reserved_type_name`, field names coming from the OpenAPI schema
+/// are never silently renamed here: doing so would change the MoonBit
+/// field name while `derive(ToJson, FromJson)` still serializes it under
+/// that new name, breaking the JSON wire contract the schema describes.
+/// `gen_struct` aborts instead, so the schema itself gets fixed at the
+/// source.
+let reserved_field_words : Array[String] = [
+  "method", "alias", "await", "yield", "override", "virtual", "abstract",
+  "static", "local", "ref", "move", "unsafe", "dyn", "typeof", "namespace",
+  "module", "package", "export", "super", "final", "sealed", "volatile",
+  "void", "finally", "do",
+]
 
 ///|
 fn gen_schemas(root : Yaml) -> String {
@@ -376,18 +405,18 @@ fn gen_route_table(ops : Array[Operation]) -> String {
   out.write_string("  Head\n")
   out.write_string("  Options\n")
   out.write_string("  Trace\n")
-  out.write_string("} derive(Show, Eq)\n\n")
+  out.write_string("} derive(Debug, Eq)\n\n")
   out.write_string("///|\n")
   out.write_string("pub struct Route {\n")
-  out.write_string("  method : HttpMethod\n")
+  out.write_string("  method_ : HttpMethod\n")
   out.write_string("  path : String\n")
   out.write_string("  operation_id : String\n")
-  out.write_string("} derive(Show, Eq)\n\n")
+  out.write_string("} derive(Debug, Eq)\n\n")
   out.write_string("///|\n")
   out.write_string("pub fn routes() -> Array[Route] {\n  [\n")
   for op in ops {
     out.write_string(
-      "    { method: " +
+      "    { method_: " +
       http_method_name(op.http_method) +
       ", path: \"" +
       op.path +
@@ -479,16 +508,16 @@ fn gen_dispatcher(ops : Array[Operation]) -> String {
   let out = StringBuilder::new()
   out.write_string("///|\n")
   out.write_string("pub(all) struct Request {\n")
-  out.write_string("  method : HttpMethod\n")
+  out.write_string("  method_ : HttpMethod\n")
   out.write_string("  path : String\n")
   out.write_string("  headers : Map[String, String]\n")
   out.write_string("  body : String?\n")
-  out.write_string("} derive(Show, Eq)\n\n")
+  out.write_string("} derive(Debug, Eq)\n\n")
   out.write_string("///|\n")
   out.write_string("pub struct Response {\n")
   out.write_string("  status : Int\n")
   out.write_string("  body : String\n")
-  out.write_string("} derive(Show, Eq)\n\n")
+  out.write_string("} derive(Debug, Eq)\n\n")
   out.write_string("///|\n")
   out.write_string(
     "/// Raised by an `ApiHandler` method to short-circuit with a specific\n",
@@ -499,7 +528,7 @@ fn gen_dispatcher(ops : Array[Operation]) -> String {
   out.write_string("/// `raise ApiError(404, \"app not found\")`.\n")
   out.write_string("pub(all) suberror ApiError {\n")
   out.write_string("  ApiError(Int, String)\n")
-  out.write_string("} derive(Show)\n\n")
+  out.write_string("} derive(Debug)\n\n")
   out.write_string("///|\n")
   out.write_string("fn __api_error_body(message : String) -> String {\n")
   out.write_string("  let out = StringBuilder::new()\n")
@@ -574,7 +603,7 @@ fn gen_dispatcher(ops : Array[Operation]) -> String {
     "pub async fn handle_request(handler : &ApiHandler, req : Request) -> Response {\n",
   )
   out.write_string("  for route in routes() {\n")
-  out.write_string("    if route.method == req.method {\n")
+  out.write_string("    if route.method_ == req.method_ {\n")
   out.write_string("      match match_path(route.path, req.path) {\n")
   out.write_string(
     "        Some(params) => return dispatch(handler, route.operation_id, params, req.headers, req.body)\n",
